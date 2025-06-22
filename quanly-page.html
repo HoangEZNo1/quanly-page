@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Quản lý & Xoá bài viết Fanpage</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .post-item {
+      margin: 10px 0; padding: 10px;
+      border: 1px solid #ccc; border-radius: 8px;
+      background: #f9f9f9;
+    }
+    img { max-width: 200px; margin-top: 10px; }
+    button { margin-top: 10px; padding: 10px; font-size: 14px; }
+    input[type="date"] { margin-right: 10px; }
+  </style>
+</head>
+<body>
+
+  <h2>🔐 Đăng nhập để quản lý Fanpage</h2>
+  <button onclick="loginWithFacebook()">Đăng nhập Facebook</button>
+
+  <div id="pages" style="margin-top: 20px;"></div>
+
+  <div id="filters" style="margin-top: 20px; display: none;">
+    <h3>Lọc theo ngày:</h3>
+    Từ: <input type="date" id="fromDate">
+    Đến: <input type="date" id="toDate">
+    <button onclick="loadPosts(selectedPageId)">Lọc bài viết</button>
+  </div>
+
+  <div id="posts" style="margin-top: 20px;"></div>
+
+  <script>
+    let accessTokenByPage = {};
+    let selectedPageId = null;
+
+    window.fbAsyncInit = function() {
+      FB.init({
+        appId      : '941231771441534', // ⚠️ Thay App ID
+        cookie     : true,
+        xfbml      : true,
+        version    : 'v19.0'
+      });
+
+      FB.AppEvents.logPageView();
+    };
+
+    (function(d, s, id){
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id;
+      js.src = "https://connect.facebook.net/en_US/sdk.js";
+      fjs.parentNode.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));
+
+    function loginWithFacebook() {
+      FB.login(function(response) {
+        if (response.authResponse) {
+          loadPages();
+        } else {
+          alert("Bạn chưa đăng nhập.");
+        }
+      }, {
+        scope: 'pages_manage_posts,pages_read_engagement,pages_show_list'
+      });
+    }
+
+    function loadPages() {
+      FB.api('/me/accounts', function(response) {
+        if (response && response.data) {
+          let html = "<h3>Chọn Fanpage:</h3>";
+          response.data.forEach(page => {
+            accessTokenByPage[page.id] = page.access_token;
+            html += `<button onclick="selectPage('${page.id}')">${page.name}</button><br><br>`;
+          });
+          document.getElementById('pages').innerHTML = html;
+        }
+      });
+    }
+
+    function selectPage(pageId) {
+      selectedPageId = pageId;
+      document.getElementById('filters').style.display = 'block';
+      loadPosts(pageId);
+    }
+
+    function loadPosts(pageId) {
+      let token = accessTokenByPage[pageId];
+      let fromDate = document.getElementById('fromDate').value;
+      let toDate = document.getElementById('toDate').value;
+
+      let since = fromDate ? `&since=${new Date(fromDate).getTime() / 1000}` : '';
+      let until = toDate ? `&until=${new Date(toDate).getTime() / 1000}` : '';
+
+      FB.api(`/${pageId}/posts?limit=20${since}${until}&access_token=${token}`, function(response) {
+        if (response && response.data) {
+          let html = "<h3>Chọn bài viết để xoá:</h3>";
+          response.data.forEach(post => {
+            const postTime = new Date(post.created_time).toLocaleString();
+            html += `
+              <div class="post-item">
+                <input type="checkbox" id="${post.id}" />
+                <label for="${post.id}"><b>${postTime}</b></label><br>
+                ${post.message ? `<p>${post.message}</p>` : ''}
+                <button onclick="viewPost('${post.id}')">🔍 Xem bài trên Facebook</button>
+                <div id="img-${post.id}"></div>
+              </div>
+            `;
+
+            // Lấy ảnh nếu có
+            FB.api(`/${post.id}?fields=full_picture&access_token=${token}`, function(p) {
+              if (p && p.full_picture) {
+                document.getElementById(`img-${post.id}`).innerHTML =
+                  `<img src="${p.full_picture}" alt="Ảnh bài viết">`;
+              }
+            });
+          });
+
+          html += `<button onclick="deleteSelectedPosts('${pageId}')">🗑️ Xoá bài đã chọn</button>`;
+          document.getElementById('posts').innerHTML = html;
+        } else {
+          document.getElementById('posts').innerHTML = "Không có bài viết nào.";
+        }
+      });
+    }
+
+    function viewPost(postId) {
+      window.open(`https://www.facebook.com/${postId}`, '_blank');
+    }
+
+    function deleteSelectedPosts(pageId) {
+      let token = accessTokenByPage[pageId];
+      let checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+
+      if (checkboxes.length === 0) {
+        alert("Chưa chọn bài nào để xoá!");
+        return;
+      }
+
+      if (!confirm("Bạn chắc chắn muốn xoá các bài đã chọn?")) return;
+
+      checkboxes.forEach(cb => {
+        FB.api(`/${cb.id}?access_token=${token}`, 'DELETE', function(response) {
+          if (response && response.success) {
+            cb.parentElement.style.backgroundColor = "#ffe6e6";
+            cb.parentElement.innerHTML += "<br>✅ Đã xoá";
+          } else {
+            cb.parentElement.innerHTML += "<br>❌ Không xoá được";
+          }
+        });
+      });
+    }
+  </script>
+</body>
+</html>
